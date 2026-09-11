@@ -1,4 +1,4 @@
-import {BibLatexParser} from "biblatex-csl-converter"
+import {BibLatexParser} from "bibliojson"
 
 import {Dialog, ensureCSS} from "../common"
 import {CrossrefSearcher} from "./crossref"
