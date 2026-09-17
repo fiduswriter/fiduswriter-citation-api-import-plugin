@@ -1,5 +1,6 @@
 import time
 
+import httpx
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -11,7 +12,96 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
     fixtures = ["initial_documenttemplates.json", "initial_styles.json"]
 
     @classmethod
+    def _mock_external_apis(cls):
+        cls._orig_async_client_get = httpx.AsyncClient.get
+
+        async def mock_get(self, url, **kwargs):
+            if "api.crossref.org/v1/works?" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "message": {
+                            "items": [
+                                {
+                                    "DOI": "10.1234/example-money",
+                                    "title": ["Money and Banking"],
+                                    "author": [
+                                        {"family": "Smith", "given": "John"}
+                                    ],
+                                    "published": {"date-parts": [[2020]]},
+                                    "abstract": "<p>An example abstract.</p>",
+                                }
+                            ]
+                        },
+                    },
+                )
+            if "api.crossref.org/v1/works/" in url and "/transform" in url:
+                return httpx.Response(
+                    200,
+                    text="@article{example-money,\n"
+                    "  author = {Smith, John},\n"
+                    "  title = {Money and Banking},\n"
+                    "  journal = {Journal},\n"
+                    "  year = {2020}\n"
+                    "}",
+                )
+            if "search.gesis.org/searchengine" in url:
+                return httpx.Response(
+                    200,
+                    json={
+                        "hits": {
+                            "hits": [
+                                {
+                                    "_source": {
+                                        "id": "gesis-fish-1",
+                                        "type": "publication",
+                                        "title": ["Fish Ecology"],
+                                        "person": ["John Doe"],
+                                        "date": "2021",
+                                        "abstract": "About fish.",
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                )
+            if "search.gesis.org/services/bibtex.php" in url:
+                return httpx.Response(
+                    200,
+                    text="@article{gesis-fish-1,\n"
+                    "  author = {Doe, John},\n"
+                    "  title = {Fish Ecology},\n"
+                    "  journal = {Journal},\n"
+                    "  year = {2021}\n"
+                    "}",
+                )
+            if "api.datacite.org/works" in url:
+                return httpx.Response(200, json={"data": []})
+            if "api.datacite.org/dois/application/x-bibtex/" in url:
+                return httpx.Response(
+                    200,
+                    text="@article{datacite,\n"
+                    "  author = {Author},\n"
+                    "  title = {Title},\n"
+                    "  year = {2021}\n"
+                    "}",
+                )
+            if "zenon.dainst.org" in url:
+                return httpx.Response(200, text="<html><body></body></html>")
+            if "europepmc" in url:
+                return httpx.Response(200, json={"resultList": {"result": []}})
+            return httpx.Response(404)
+
+        httpx.AsyncClient.get = mock_get
+
+    @classmethod
+    def _unmock_external_apis(cls):
+        httpx.AsyncClient.get = cls._orig_async_client_get
+
+    @classmethod
     def setUpClass(cls):
+        cls._mock_external_apis()
         super().setUpClass()
         cls.base_url = cls.live_server_url
         driver_data = cls.get_drivers(1)
@@ -24,6 +114,7 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
     def tearDownClass(cls):
         cls.driver.quit()
         super().tearDownClass()
+        cls._unmock_external_apis()
 
     def setUp(self):
         self.user = self.create_user(
@@ -40,10 +131,14 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
         self.driver.find_element(By.ID, "bibimport-search-text").send_keys(
             "Money"
         )
-        time.sleep(5)
-        WebDriverWait(self.driver, 5).until(
+        WebDriverWait(self.driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.api-import"))
         ).click()
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, ".edit-bib.fw-link-text")
+            )
+        )
         self.assertEqual(
             len(
                 self.driver.find_elements(
@@ -75,7 +170,7 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
         self.driver.find_element(By.ID, "bibimport-search-text").send_keys(
             "Fish"
         )
-        WebDriverWait(self.driver, 5).until(
+        WebDriverWait(self.driver, 10).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.api-import"))
         ).click()
         self.assertEqual(
@@ -84,6 +179,9 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
         self.driver.find_element(
             By.XPATH, '//*[normalize-space()="Insert"]'
         ).click()
+        WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "span.citation"))
+        )
         self.assertEqual(
             len(self.driver.find_elements(By.CSS_SELECTOR, "span.citation")), 1
         )
