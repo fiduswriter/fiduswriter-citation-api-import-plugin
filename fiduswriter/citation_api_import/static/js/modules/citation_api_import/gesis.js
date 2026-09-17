@@ -61,7 +61,7 @@ export class GesisSearcher {
         }
 
         return fetch(
-            `https://search.gesis.org/searchengine?source=${encodeURI(JSON.stringify(searchQuery))}&source_content_type=${encodeURI("application/json")}`,
+            `/api/citation_api_import/proxy/https://search.gesis.org/searchengine?source=${encodeURIComponent(JSON.stringify(searchQuery))}&source_content_type=${encodeURIComponent("application/json")}`,
             {
                 method: "GET"
             }

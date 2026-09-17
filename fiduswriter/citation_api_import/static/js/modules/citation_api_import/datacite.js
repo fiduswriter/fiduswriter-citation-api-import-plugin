@@ -42,9 +42,12 @@ export class DataciteSearcher {
 
     getBibtex(doi) {
         this.importer.dialog.close()
-        fetch(`https://api.datacite.org/dois/application/x-bibtex/${doi}`, {
-            method: "GET"
-        })
+        fetch(
+            `/api/citation_api_import/proxy/https://api.datacite.org/dois/application/x-bibtex/${doi}`,
+            {
+                method: "GET"
+            }
+        )
             .then(response => response.text())
             .then(bibtex => this.importer.importBibtex(bibtex))
     }
