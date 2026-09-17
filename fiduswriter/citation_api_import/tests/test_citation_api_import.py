@@ -1,6 +1,7 @@
 import time
 
 import httpx
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -99,6 +100,24 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
     def _unmock_external_apis(cls):
         httpx.AsyncClient.get = cls._orig_async_client_get
 
+    def _click_api_import(self):
+        """
+        Click the first API import button. The search result list can
+        re-render between locating the button and clicking it, which replaces
+        the element, so retry on stale element errors.
+        """
+        for _attempt in range(5):
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.element_to_be_clickable(
+                        (By.CSS_SELECTOR, "button.api-import")
+                    )
+                ).click()
+                return
+            except StaleElementReferenceException:
+                time.sleep(0.5)
+        self.fail("Could not click the API import button")
+
     @classmethod
     def setUpClass(cls):
         cls._mock_external_apis()
@@ -131,9 +150,7 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
         self.driver.find_element(By.ID, "bibimport-search-text").send_keys(
             "Money"
         )
-        WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.api-import"))
-        ).click()
+        self._click_api_import()
         WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located(
                 (By.CSS_SELECTOR, ".edit-bib.fw-link-text")
@@ -170,9 +187,10 @@ class CitationImportTest(SeleniumHelper, ChannelsLiveServerTestCase):
         self.driver.find_element(By.ID, "bibimport-search-text").send_keys(
             "Fish"
         )
+        self._click_api_import()
         WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.api-import"))
-        ).click()
+            EC.presence_of_element_located((By.CSS_SELECTOR, "span.delete"))
+        )
         self.assertEqual(
             len(self.driver.find_elements(By.CSS_SELECTOR, "span.delete")), 1
         )
